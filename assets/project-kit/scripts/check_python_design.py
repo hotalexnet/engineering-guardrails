@@ -54,6 +54,53 @@ def function_scores(tree):
             yield node.lineno, getattr(node, "name", "<lambda>"), visitor.score
 
 
+class Nesting(ast.NodeVisitor):
+    """Control-block depth; expressions are left to the branch-score metric."""
+
+    def __init__(self):
+        self.depth = 0
+        self.maximum = 0
+
+    def generic_visit(self, node):
+        block = isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While,
+                                  ast.With, ast.AsyncWith, ast.Try, ast.TryStar, ast.Match))
+        self.depth += block
+        self.maximum = max(self.maximum, self.depth)
+        super().generic_visit(node)
+        self.depth -= block
+
+    def visit_If(self, node):
+        self.depth += 1
+        self.maximum = max(self.maximum, self.depth)
+        self.visit(node.test)
+        for statement in node.body:
+            self.visit(statement)
+        self.depth -= 1
+        for statement in node.orelse:
+            # An elif shares its parent's column; an explicit else/if does not.
+            is_elif = isinstance(statement, ast.If) and statement.col_offset == node.col_offset
+            self.depth += not is_elif
+            self.visit(statement)
+            self.depth -= not is_elif
+
+    def visit_FunctionDef(self, node):
+        pass  # Definitions start independent scopes, not additional control blocks.
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+    visit_ClassDef = visit_FunctionDef
+    visit_Lambda = visit_FunctionDef
+
+
+def function_depths(tree):
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            visitor = Nesting()
+            body = [node.body] if isinstance(node, ast.Lambda) else node.body
+            for statement in body:
+                visitor.visit(statement)
+            yield node.lineno, getattr(node, "name", "<lambda>"), visitor.maximum
+
+
 def object_value(value, label):
     if not isinstance(value, dict):
         raise ValueError(f"quality-gates.json: {label} must be an object")
@@ -99,11 +146,14 @@ def load_settings(contents):
     limit = settings.get("max_function_complexity")
     if type(limit) is not int or limit < 1:
         raise ValueError("quality-gates.json: python.max_function_complexity must be a positive integer")
+    nesting_limit = settings.get("max_nesting_depth", 4)
+    if type(nesting_limit) is not int or nesting_limit < 1:
+        raise ValueError("quality-gates.json: python.max_nesting_depth must be a positive integer")
     roots = string_list(settings.get("source_roots"), "python.source_roots")
     if any(Path(root).is_absolute() or ".." in Path(root).parts for root in roots):
         raise ValueError("quality-gates.json: python.source_roots must be relative paths without '..'")
     layers = validate_layers(settings.get("layers"))
-    return limit, sorted(map(Path, roots), key=lambda p: len(p.parts), reverse=True), layers
+    return limit, nesting_limit, sorted(map(Path, roots), key=lambda p: len(p.parts), reverse=True), layers
 
 
 def module_name(path, roots):
@@ -163,8 +213,9 @@ def cycle_errors(graph):
     return errors
 
 
-def analyze(contents):
-    limit, roots, layers = load_settings(contents)
+def analyze(contents, warnings=None):
+    limit, nesting_limit, roots, layers = load_settings(contents)
+    warnings = warnings if warnings is not None else []
     trees, ownership, errors = {}, {}, []
     for path, content in contents.items():
         if path.suffix != ".py":
@@ -178,6 +229,10 @@ def analyze(contents):
         for line, name, score in function_scores(tree):
             if score > limit:
                 errors.append(f"{path}:{line}: {name} complexity {score} > {limit}")
+        for line, name, depth in function_depths(tree):
+            if depth > nesting_limit:
+                warnings.append(f"{path}:{line}: {name} nesting depth {depth} > {nesting_limit} "
+                                "(advisory only)")
     return len(trees), errors + dependency_errors(trees, ownership, layers)
 
 
@@ -203,14 +258,18 @@ def dependency_errors(trees, ownership, layers):
 def check(root, tree=None):
     try:
         contents = dict(file_contents(root, tree))
-        count, errors = analyze(contents)
+        warnings = []
+        count, errors = analyze(contents, warnings)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, SyntaxError) as error:
         print(f"Python design check FAILED: {error}", file=sys.stderr)
         return 1
+    for warning in warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     if errors:
         print("Python design check FAILED:\n  " + "\n  ".join(errors), file=sys.stderr)
         return 1
-    print(f"PASS: {count} Python modules; complexity, declared layers and static cycles checked.")
+    print(f"PASS: {count} Python modules; complexity, nesting advisories, declared layers "
+          "and static cycles checked.")
     print("Scope: Python AST only; other languages and data-access boundaries require separate checks.")
     return 0
 

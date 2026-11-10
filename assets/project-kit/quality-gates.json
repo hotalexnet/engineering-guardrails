@@ -2,6 +2,7 @@
   "commands": [],
   "python": {
     "max_function_complexity": 15,
+    "max_nesting_depth": 4,
     "source_roots": ["scripts", "tests"],
     "layers": {
       "checks": {

@@ -97,6 +97,7 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 - **函数复杂度：** Python 函数默认 AST 分支分数最多15，这是项目默认值，不是行业标准，
   也不宣称与 Radon／Sonar 完全等价。嵌套函数和 lambda 独立度量，见[度量定义](./references/project-gates.md)
   和[带分数的示例](./assets/project-kit/docs/engineering-gates.md#复杂度与模块边界)。
+  另报控制块嵌套深度：`python.max_nesting_depth` 默认4，超过仅警告、不阻断；elif 同层，嵌套函数独立，表达式不计控制块深度，完整口径见上述文档。
 - **声明模块边界：** 配置源码根、模块所属层和允许依赖。未归属模块、未授权跨层导入及静态循环会失败。
   初始配置描述门禁工具本身，增加业务模块时必须声明实际边界。
 - **测试与评审结合：** 按[评审清单](./assets/project-kit/docs/change-review.md)记录正常、禁止、异常和适用的并发路径。

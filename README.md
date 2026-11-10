@@ -106,6 +106,9 @@ from the working copy. See the [integration guide](./assets/project-kit/docs/int
   This is a project default—not an industry standard or a claim of equivalence to Radon/Sonar.
   Nested functions and lambdas are measured independently; see the [metric definition](./references/project-gates.md)
   and [scored examples](./assets/project-kit/docs/engineering-gates.md#复杂度与模块边界).
+  Control-block nesting is reported separately: `python.max_nesting_depth` defaults to 4;
+  exceeding it only warns and never blocks. `elif` stays at the same depth, nested functions
+  are independent, and expressions do not contribute to this depth; see the definition above.
 - **Declared module boundaries:** configure source roots, layer ownership and allowed imports.
   Unowned modules, forbidden cross-layer imports and static import cycles fail checks.
   The starter configuration covers the gate tools; declare actual application modules as they are added.

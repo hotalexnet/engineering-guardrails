@@ -106,6 +106,26 @@ class QualityGateTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("complexity 16 > 15", result.stderr)
 
+    def test_nesting_warning_uses_snapshot_config_and_does_not_block_hook(self):
+        config_path = self.root / "quality-gates.json"
+        config = json.loads(config_path.read_text())
+        config["python"]["max_nesting_depth"] = 1
+        config["python"]["layers"]["entry"]["modules"].append("feature")
+        config_path.write_text(json.dumps(config))
+        code = self.root / "scripts/feature.py"
+        code.write_text("def run(x):\n    if x:\n        if x: return x\n")
+        self.git("add", "quality-gates.json", "scripts/feature.py")
+        config["python"]["max_nesting_depth"] = 4
+        config_path.write_text(json.dumps(config))
+        code.write_text("# unstaged simplification\n")
+        working = self.quality()
+        self.assertEqual(working.returncode, 0, working.stdout + working.stderr)
+        self.assertNotIn("feature.py:1: run nesting", working.stderr)
+        result = self.git("commit", "-m", "nesting advisory", check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("WARNING: scripts/feature.py:1: run nesting depth 2 > 1", result.stderr)
+        self.assertIn("advisory only", result.stderr)
+
     def test_commit_hook_rejects_forbidden_layer_dependency(self):
         path = self.root / "scripts/check_file_lines.py"
         original = path.read_text()

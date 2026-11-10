@@ -9,7 +9,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SOURCE / "scripts"))
-from check_python_design import analyze, function_scores
+from check_python_design import analyze, function_depths, function_scores
 
 
 def sources(files, layers=None):
@@ -43,6 +43,76 @@ class PythonDesignTests(unittest.TestCase):
     def test_async_branch_and_lambda_are_measured(self):
         tree = ast.parse("async def f(x):\n    if x: return x\ng = lambda x: 1 if x else 0")
         self.assertEqual([score for _, _, score in function_scores(tree)], [2, 2])
+
+    def test_nesting_four_passes_and_five_warns_without_errors(self):
+        for depth in (4, 5):
+            with self.subTest(depth=depth):
+                code = "def f(x):\n" + "".join(
+                    "    " * level + "if x:\n" for level in range(1, depth + 1))
+                code += "    " * (depth + 1) + "return x\n"
+                warnings = []
+                _, errors = analyze(sources({"src/app.py": code}), warnings)
+                self.assertEqual(errors, [])
+                self.assertEqual(bool(warnings), depth == 5)
+                if warnings:
+                    self.assertIn("src/app.py:1: f nesting depth 5 > 4", warnings[0])
+                    self.assertIn("advisory only", warnings[0])
+
+    def test_nesting_elif_is_flat_but_else_if_is_nested(self):
+        cases = (("    if x: pass\n    elif y: pass\n    else: pass\n", 1),
+                 ("    if x: pass\n    else:\n        if y: pass\n", 2),
+                 ("    if x: return\n    if y: return\n", 1))
+        for body, expected in cases:
+            with self.subTest(body=body):
+                tree = ast.parse("def f(x, y):\n" + body)
+                self.assertEqual(list(function_depths(tree))[0][2], expected)
+
+    def test_nesting_definitions_have_independent_scopes(self):
+        code = ("def outer(x):\n    if x:\n        def inner():\n"
+                "            if x: pass\n        class C:\n"
+                "            def method(self):\n                if x: pass\n"
+                "    g = lambda: 1 if x else 0\n")
+        depths = {name: depth for _, name, depth in function_depths(ast.parse(code))}
+        self.assertEqual(depths, {"outer": 1, "inner": 1, "method": 1, "<lambda>": 0})
+
+    def test_nesting_control_blocks_and_expression_exclusions(self):
+        cases = (
+            ("def f():\n    for x in xs:\n        while x:\n            with lock:\n"
+             "                if x: pass\n", 4),
+            ("async def f():\n    async for x in xs:\n        async with lock:\n"
+             "            if x: pass\n", 3),
+            ("def f():\n    try:\n        if x: pass\n    except ValueError:\n"
+             "        if y: pass\n    else:\n        if z: pass\n"
+             "    finally:\n        if w: pass\n", 2),
+            ("def f():\n    try: run()\n    except* ValueError:\n        if x: pass\n", 2),
+            ("def f(x):\n    match x:\n        case 1 if x:\n            if x: pass\n"
+             "        case _: pass\n", 2),
+            ("def f():\n    return [x if x else 0 for row in rows for x in row if x]\n", 0),
+            ("def f():\n    pass\n", 0),
+        )
+        for code, expected in cases:
+            with self.subTest(code=code):
+                self.assertEqual(list(function_depths(ast.parse(code)))[0][2], expected)
+
+    def test_nesting_limit_is_configurable(self):
+        content = sources({"src/app.py": "def f(x):\n    if x:\n        if x: pass\n"})
+        config = json.loads(content[Path("quality-gates.json")])
+        config["python"]["max_nesting_depth"] = 1
+        content[Path("quality-gates.json")] = json.dumps(config).encode()
+        warnings = []
+        _, errors = analyze(content, warnings)
+        self.assertEqual(errors, [])
+        self.assertIn("nesting depth 2 > 1", warnings[0])
+
+    def test_invalid_nesting_limit_fails_closed(self):
+        for value in (True, False, 0, -1, 4.5, "4", None, []):
+            with self.subTest(value=value):
+                content = sources({"src/app.py": "x = 1\n"})
+                config = json.loads(content[Path("quality-gates.json")])
+                config["python"]["max_nesting_depth"] = value
+                content[Path("quality-gates.json")] = json.dumps(config).encode()
+                with self.assertRaisesRegex(ValueError, "python.max_nesting_depth"):
+                    analyze(content)
 
     def test_forbidden_layer_import_fails(self):
         layers = {"core": {"modules": ["core"], "allow": []},
