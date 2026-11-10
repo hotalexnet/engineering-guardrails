@@ -1,0 +1,14 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Credentials and local workspace
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.workspace/
+*.log
