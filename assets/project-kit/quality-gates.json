@@ -1,0 +1,20 @@
+{
+  "python": {
+    "max_function_complexity": 15,
+    "source_roots": ["scripts", "tests"],
+    "layers": {
+      "checks": {
+        "modules": ["check_file_lines", "check_python_design"],
+        "allow": []
+      },
+      "entry": {
+        "modules": ["check_quality", "install_hooks"],
+        "allow": ["checks"]
+      },
+      "tests": {
+        "modules": ["test_file_lines", "test_quality_gates", "test_python_design"],
+        "allow": ["checks", "entry"]
+      }
+    }
+  }
+}

@@ -10,17 +10,27 @@ from pathlib import Path
 KIT = Path(__file__).resolve().parents[1] / "assets/project-kit"
 FILES = (
     "scripts/check_file_lines.py", "scripts/check_quality.py",
-    "scripts/install_hooks.py", "tests/test_file_lines.py",
+    "scripts/check_python_design.py", "scripts/install_hooks.py",
+    "tests/test_file_lines.py", "tests/test_python_design.py",
     "tests/test_quality_gates.py", ".githooks/pre-commit",
     ".githooks/pre-push", "docs/engineering-gates.md",
+    "docs/change-review.md", "quality-gates.json",
 )
 
 
-def initialize(root):
-    actual = Path(subprocess.check_output(
-        ["git", "rev-parse", "--show-toplevel"], cwd=root, text=True).strip())
-    if actual.resolve() != root:
-        raise ValueError("--repo must be the Git repository root")
+def conflict_reason(root, target, source):
+    parents = [parent for parent in target.parents if root in parent.parents]
+    if target.is_symlink() or any(parent.is_symlink() for parent in parents):
+        return "symlink"
+    if any(parent.exists() and not parent.is_dir() for parent in parents):
+        return "parent is not a directory"
+    if target.exists():
+        if not target.is_file() or target.read_bytes() != source.read_bytes():
+            return "existing content differs"
+    return None
+
+
+def planned_copies(root):
     sources = [KIT / relative for relative in FILES]
     if any(not source.is_file() for source in sources):
         raise ValueError("project kit is incomplete")
@@ -29,19 +39,23 @@ def initialize(root):
     for source in sources:
         relative = source.relative_to(KIT)
         target = root / relative
-        parents = [parent for parent in target.parents if root in parent.parents]
-        if target.is_symlink() or any(parent.is_symlink() for parent in parents):
-            conflicts.append(str(relative) + " (symlink)")
-        elif any(parent.exists() and not parent.is_dir() for parent in parents):
-            conflicts.append(str(relative) + " (parent is not a directory)")
-        elif target.exists():
-            if not target.is_file() or target.read_bytes() != source.read_bytes():
-                conflicts.append(str(relative))
-        else:
+        reason = conflict_reason(root, target, source)
+        if reason:
+            conflicts.append(f"{relative} ({reason})")
+        elif not target.exists():
             pending.append((source, target))
     if conflicts:
         raise ValueError("existing files differ; integrate manually: "
                          + ", ".join(conflicts))
+    return pending
+
+
+def initialize(root):
+    actual = Path(subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], cwd=root, text=True).strip())
+    if actual.resolve() != root:
+        raise ValueError("--repo must be the Git repository root")
+    pending = planned_copies(root)
     for source, target in pending:
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("xb") as output:

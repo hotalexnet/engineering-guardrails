@@ -10,10 +10,12 @@ import tempfile
 from pathlib import Path
 
 from check_file_lines import check, git, snapshot_tree
+from check_python_design import check as check_design
 
 
 def run_tests(root):
     required = ("scripts/check_file_lines.py", "scripts/check_quality.py",
+                "scripts/check_python_design.py", "quality-gates.json",
                 "tests/test_file_lines.py")
     if any(not (root / name).is_file() for name in required):
         print("FAIL: required gate files/tests are missing", file=sys.stderr)
@@ -33,7 +35,7 @@ sys.exit(0 if result.wasSuccessful() else 1)
 
 
 def verify(root, tree=None):
-    if check(root, tree):
+    if check(root, tree) or check_design(root, tree):
         return 1
     if tree is None:
         return run_tests(root)

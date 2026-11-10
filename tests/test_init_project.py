@@ -33,6 +33,13 @@ class InitializerTests(unittest.TestCase):
                               cwd=self.root, capture_output=True)
         self.assertNotEqual(hook.returncode, 0)
 
+    def test_fresh_project_quality_gate_passes(self):
+        self.assertEqual(self.initialize().returncode, 0)
+        result = subprocess.run(
+            [sys.executable, "scripts/check_quality.py"], cwd=self.root,
+            text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_conflict_stops_before_creating_any_files(self):
         target = self.root / "scripts/check_file_lines.py"
         target.parent.mkdir()

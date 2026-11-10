@@ -7,8 +7,9 @@
 **English** | [中文](./README.zh-CN.md)
 
 Reusable engineering constraints for coding agents. Combine short global instructions,
-a shared skill, and repository-local checks to keep files manageable, preserve module
-boundaries, and verify actual staged or committed code—not just a passing working copy.
+a shared skill, and repository-local checks covering **file size, complexity, module
+boundaries, tests, and review**. Verify actual staged or committed code—not just a passing
+working copy.
 
 The skill uses Markdown and portable Python tools. It does not prescribe a framework,
 microservices, or the same architecture for every project.
@@ -39,6 +40,7 @@ python3 ~/.agents/skills/engineering-guardrails/scripts/init_project.py \
   --repo /absolute/path/to/project
 
 cd /absolute/path/to/project
+# Declare existing application modules in quality-gates.json before checking them.
 python3 scripts/check_quality.py
 
 # Review existing hooks before enabling repository-local automation.
@@ -53,10 +55,11 @@ or load it explicitly with `/skill:engineering-guardrails`.
 The clone places one skill under `~/.agents/skills/engineering-guardrails/`.
 The project initializer then copies a self-contained gate kit into the target repository:
 
-- `scripts/` — line checks, the quality entry point, and the hook installer.
+- `scripts/` — line, Python complexity/dependency checks, the quality entry point, and hook setup.
+- `quality-gates.json` — Python source roots, module ownership, allowed layers, and complexity limit.
 - `.githooks/` — staged-snapshot and outgoing-tip checks.
-- `tests/` — regression tests for the gate tools.
-- `docs/engineering-gates.md` — project rules and enforcement limitations.
+- `tests/` — regression tests for the gate tools and deliberately invalid changes.
+- `docs/` — gate rules and a change-review/test-matrix template.
 
 The initializer checks all destinations before copying and refuses conflicting content.
 It does not modify `AGENTS.md`, install dependencies, stage files, commit, or push.
@@ -72,6 +75,7 @@ Run these commands from the target repository root after initialization.
 | Check the complete staged snapshot and its tests | `python3 scripts/check_quality.py --staged` |
 | Check a specific committed snapshot | `python3 scripts/check_quality.py --revision HEAD` |
 | Check file lengths only | `python3 scripts/check_file_lines.py` |
+| Check Python complexity and declared dependencies | `python3 scripts/check_python_design.py` |
 | Enable repository-local hooks | `python3 scripts/install_hooks.py` |
 | Inspect the active hook configuration | `git config --show-origin --get core.hooksPath` |
 
@@ -92,15 +96,23 @@ local tip, excluding deletions; it does not replay every historical commit.
   missing gate files, and empty test suites.
 - **Non-overwriting setup:** initializers and hook installers stop at conflicting setups
   instead of replacing them.
-- **Responsibility-based design:** the skill guides module boundaries and relevant business
-  checks without pretending those checks have already been automated.
+- **Function complexity:** Python functions default to a maximum AST branch score of 15.
+  This is a project default—not an industry standard or a claim of equivalence to Radon/Sonar.
+  Nested functions and lambdas are measured independently; see the [metric definition](./references/project-gates.md).
+- **Declared module boundaries:** configure source roots, layer ownership and allowed imports.
+  Unowned modules, forbidden cross-layer imports and static import cycles fail checks.
+  The starter configuration covers the gate tools; declare actual application modules as they are added.
+- **Tests and review together:** record normal, forbidden, failure and relevant concurrency paths
+  in the [review checklist](./assets/project-kit/docs/change-review.md). Name the independent reviewer
+  and conclusion, or explicitly state that no independent review occurred. Coverage percentages
+  and green checks do not replace behavioral evidence or review.
 
 ## How the gates work
 
 ```text
 Short global instructions   when to load the skill and which defaults apply
 SKILL.md                    inspect, implement, verify, and report honestly
-Repository-local scripts    executable line checks and tool regression tests
+Repository-local scripts    file size, Python complexity/dependencies, and tests
 Local Git hooks             check the actual staged or outgoing snapshot
 Remote CI and protection    separate setup required for enforced merging
 ```
@@ -157,9 +169,13 @@ do not silently relax thresholds to make a check pass.
 ## Limitations
 
 - Skills and global instructions guide agents; local hooks can be bypassed.
+- Python checks inspect AST functions and static imports only. Configure corresponding tools
+  for other languages; dynamic imports, SQL writes and interface design still require review.
 - Remote enforcement requires separately configured CI, required checks, and branch protection.
-- The kit implements line checks and tests of the gate tools themselves. It does **not**
-  automatically implement module-dependency, permission, workflow, or concurrency checks.
+- The kit checks declared Python dependencies, not every architectural coupling. It does
+  **not** automatically implement permission, workflow, data-access or concurrency tests.
+- The review template cannot approve a change. High-risk changes need independent review;
+  do not label the implementer's self-check as someone else's approval.
 - Add application tests and language-specific checks to the project entry point. Tool tests
   are not application acceptance.
 - Inspect legacy projects before changing them; do not automatically restructure them.
@@ -171,6 +187,7 @@ Run tests and static checks from this skill repository's root:
 
 ```bash
 python3 assets/project-kit/scripts/check_file_lines.py
+python3 assets/project-kit/scripts/check_python_design.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 -m unittest discover -s assets/project-kit/tests -p 'test_*.py' -v
 git diff --check
@@ -179,6 +196,10 @@ git diff --check
 Tests use isolated temporary Git repositories; they do not create fixture commits in
 application branches. The Python tools use only the standard library.
 
+[GitHub Actions](./.github/workflows/quality.yml) runs these checks on pushes and pull
+requests with Python 3.12 and 3.13. A workflow is not branch protection: required checks
+and independent approvals must still be configured on the hosting platform.
+
 ## Project structure
 
 ```text
@@ -186,13 +207,16 @@ engineering-guardrails/
 ├── SKILL.md
 ├── references/project-gates.md
 ├── scripts/init_project.py
+├── quality-gates.json
+├── .github/                        # CI and pull-request review template
 ├── assets/
 │   ├── demo.svg
 │   └── project-kit/
 │       ├── scripts/
 │       ├── .githooks/
 │       ├── tests/
-│       └── docs/engineering-gates.md
+│       ├── quality-gates.json
+│       └── docs/                    # gate rules and change-review checklist
 ├── tests/test_init_project.py
 ├── README.md
 ├── README.zh-CN.md

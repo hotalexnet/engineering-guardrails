@@ -1,5 +1,6 @@
 """Exercise real local hooks using isolated temporary Git repositories."""
 
+import json
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ class QualityGateTests(unittest.TestCase):
         self.git("config", "user.name", "Gate Test")
         self.git("config", "user.email", "gate@example.invalid")
         for relative in ("scripts/check_file_lines.py", "scripts/check_quality.py",
+                         "scripts/check_python_design.py", "quality-gates.json",
                          "scripts/install_hooks.py", ".githooks/pre-commit",
                          ".githooks/pre-push"):
             path = self.root / relative
@@ -79,6 +81,29 @@ class QualityGateTests(unittest.TestCase):
             text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("1001 lines > 1000", result.stderr)
+
+    def test_commit_hook_rejects_complexity_violation(self):
+        config_path = self.root / "quality-gates.json"
+        config = json.loads(config_path.read_text())
+        config["python"]["layers"]["entry"]["modules"].append("feature")
+        config_path.write_text(json.dumps(config))
+        code = self.root / "scripts/feature.py"
+        code.write_text("def run(x):\n" + "    if x: x -= 1\n" * 15)
+        self.git("add", "quality-gates.json", "scripts/feature.py")
+        code.write_text("# unstaged fix\n")
+        result = self.git("commit", "-m", "complex", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("complexity 16 > 15", result.stderr)
+
+    def test_commit_hook_rejects_forbidden_layer_dependency(self):
+        path = self.root / "scripts/check_file_lines.py"
+        original = path.read_text()
+        path.write_text(original + "\nimport check_quality\n")
+        self.git("add", "scripts/check_file_lines.py")
+        path.write_text(original)
+        result = self.git("commit", "-m", "wrong dependency", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("forbidden dependency checks -> entry", result.stderr)
 
     def test_delete_only_push_passes(self):
         result = self.quality("--pre-push", input=(

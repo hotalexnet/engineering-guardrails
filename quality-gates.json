@@ -1,0 +1,23 @@
+{
+  "python": {
+    "max_function_complexity": 15,
+    "source_roots": [
+      "scripts", "tests",
+      "assets/project-kit/scripts", "assets/project-kit/tests"
+    ],
+    "layers": {
+      "checks": {
+        "modules": ["check_file_lines", "check_python_design"],
+        "allow": []
+      },
+      "entry": {
+        "modules": ["check_quality", "install_hooks", "init_project"],
+        "allow": ["checks"]
+      },
+      "tests": {
+        "modules": ["test_file_lines", "test_quality_gates", "test_python_design", "test_init_project"],
+        "allow": ["checks", "entry"]
+      }
+    }
+  }
+}

@@ -7,7 +7,8 @@
 [English](./README.md) | **中文**
 
 面向编码 Agent 的通用工程约束工具。通过全局简规则、通用 Skill 和项目自动门禁，
-控制文件规模、维护模块边界，并验证实际暂存或提交的代码，而不只是工作区测试通过。
+同时约束**文件规模、复杂度、模块边界、测试和评审**，验证实际暂存或提交的代码，
+而不只是工作区测试通过。
 
 Skill 使用 Markdown 和可移植的 Python 工具，不强制框架、微服务，
 也不要求每个项目采用同一种架构。
@@ -37,6 +38,7 @@ python3 ~/.agents/skills/engineering-guardrails/scripts/init_project.py \
   --repo /absolute/path/to/project
 
 cd /absolute/path/to/project
+# 检查已有 Python 业务代码前，先在 quality-gates.json 声明实际模块。
 python3 scripts/check_quality.py
 
 # 审核已有 hook 后，再启用本仓库的自动门禁。
@@ -51,10 +53,11 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 克隆后，`~/.agents/skills/engineering-guardrails/` 中有一个完整 Skill。
 项目初始化器会向目标仓库复制一套自包含门禁：
 
-- `scripts/`：行数检查、统一质量入口和 hook 安装器。
+- `scripts/`：行数、Python 复杂度／依赖检查、统一质量入口和 hook 安装器。
+- `quality-gates.json`：Python 源码根、模块归属、允许依赖及复杂度阈值。
 - `.githooks/`：暂存快照及待推送 tip 检查。
-- `tests/`：门禁工具回归测试。
-- `docs/engineering-gates.md`：项目规则和强制能力限制说明。
+- `tests/`：门禁工具及故意违规场景的回归测试。
+- `docs/`：门禁规则、变更评审和测试矩阵模板。
 
 初始化器复制前预检全部目标，遇到冲突内容即停止，不修改 `AGENTS.md`，
 不安装依赖、不暂存、不提交、不推送。
@@ -70,6 +73,7 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 | 检查完整暂存快照及其测试 | `python3 scripts/check_quality.py --staged` |
 | 检查指定提交快照 | `python3 scripts/check_quality.py --revision HEAD` |
 | 只检查文件行数 | `python3 scripts/check_file_lines.py` |
+| 检查 Python 复杂度和声明的依赖 | `python3 scripts/check_python_design.py` |
 | 启用仓库本地 hook | `python3 scripts/install_hooks.py` |
 | 查看当前 hook 配置 | `git config --show-origin --get core.hooksPath` |
 
@@ -85,14 +89,19 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 - **按快照验证：** 暂存和提交快照在临时导出目录运行测试，不能用未暂存修复掩盖暂存失败。
 - **验证失败路径：** 测试主动注入超限文件、失败测试、门禁文件缺失及空测试集。
 - **不覆盖已有配置：** 初始化器及 hook 安装器遇到冲突即停止，不接管已有其他门禁。
-- **按职责设计：** Skill 指导模块边界及适用的业务验证，不冒充这些检查已经全部自动实现。
+- **函数复杂度：** Python 函数默认 AST 分支分数最多15，这是项目默认值，不是行业标准，
+  也不宣称与 Radon／Sonar 完全等价。嵌套函数和 lambda 独立度量，见[度量定义](./references/project-gates.md)。
+- **声明模块边界：** 配置源码根、模块所属层和允许依赖。未归属模块、未授权跨层导入及静态循环会失败。
+  初始配置描述门禁工具本身，增加业务模块时必须声明实际边界。
+- **测试与评审结合：** 按[评审清单](./assets/project-kit/docs/change-review.md)记录正常、禁止、异常和适用的并发路径。
+  写明独立评审人及结论，或明确“未独立评审”；覆盖率百分比和检查全绿不代替行为证据或人工评审。
 
 ## 门禁如何工作
 
 ```text
 全局简规则          何时加载 Skill，默认约束是什么
 SKILL.md            检查上下文、实现、验证并如实报告
-项目内检查脚本      执行行数检查及工具回归测试
+项目内检查脚本      文件规模、Python 复杂度／依赖及测试
 本地 Git hook       自动检查真实暂存或待推送快照
 远端 CI 和分支保护  需要另行配置，才能强制限制合并
 ```
@@ -145,7 +154,9 @@ Git 不会自动启用它们。
 
 - Skill 和全局约定是代理指导，本地 hook 可以绕过。
 - 远端强制约束需要另行配置 CI、必要检查及分支保护。
-- 工具包实现行数门禁和工具自身测试，**没有自动实现模块依赖、权限、业务流程或并发正确性检查**。
+- Python 检查只覆盖 AST 函数及静态导入，其他语言需配置对应工具；动态导入、SQL 写入和接口设计仍需评审。
+- 工具包检查声明的 Python 依赖，不等于识别所有架构耦合；**没有自动实现权限、业务流程、数据访问或并发测试**。
+- 评审模板不会自动批准变更。高风险改动需独立评审，不把实现者自查当成他人批准。
 - 真实应用测试及其他语言检查需要接入项目入口；工具测试不等于应用验收。
 - 旧项目先评估，不自动批量改造。
 - 工具面向 Git 仓库，需要 Python 3.12+ 和 Git。
@@ -156,12 +167,16 @@ Git 不会自动启用它们。
 
 ```bash
 python3 assets/project-kit/scripts/check_file_lines.py
+python3 assets/project-kit/scripts/check_python_design.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 -m unittest discover -s assets/project-kit/tests -p 'test_*.py' -v
 git diff --check
 ```
 
 测试使用独立临时 Git 仓库，不在业务分支制造测试提交。Python 工具仅使用标准库。
+
+[GitHub Actions](./.github/workflows/quality.yml) 在推送和合并请求上使用 Python 3.12、3.13 运行这些检查。
+工作流不等于分支保护：必要检查及独立审核要求仍需在托管平台另行配置。
 
 ## 项目结构
 
@@ -170,13 +185,16 @@ engineering-guardrails/
 ├── SKILL.md
 ├── references/project-gates.md
 ├── scripts/init_project.py
+├── quality-gates.json
+├── .github/                        # CI 和合并请求评审模板
 ├── assets/
 │   ├── demo.svg
 │   └── project-kit/
 │       ├── scripts/
 │       ├── .githooks/
 │       ├── tests/
-│       └── docs/engineering-gates.md
+│       ├── quality-gates.json
+│       └── docs/                    # 门禁规则和变更评审清单
 ├── tests/test_init_project.py
 ├── README.md
 ├── README.zh-CN.md
