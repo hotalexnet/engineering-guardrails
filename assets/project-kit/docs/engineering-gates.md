@@ -29,7 +29,7 @@ python3 scripts/check_quality.py --revision HEAD
 python3 scripts/check_file_lines.py
 ```
 
-统一入口先检查行数、Python 函数复杂度、声明层依赖及静态循环，再执行 `tests/test_*.py`。无测试、测试失败、缺少必需检查文件均失败。暂存及提交快照在临时目录中运行测试，避免用未提交修复掩盖失败。
+统一入口先检查行数、Python 函数复杂度、声明层依赖及静态循环，再执行配置的 `commands` 和 `tests/test_*.py`。无测试、测试失败、缺少必需检查文件均失败。暂存及提交快照在临时目录中运行测试，避免用未提交修复掩盖失败。
 
 增加其他语言或业务模块后，必须将真实测试命令接入统一入口；现有 Python 测试仅验证门禁工具本身，不能代替前后端或全流程验收。
 
@@ -41,6 +41,39 @@ python3 scripts/check_file_lines.py
 
 默认上限15，可在评审后按项目调整；不得为放行某次失败静默调高。1000行硬上限仍需用户明确确认才能改变。
 
+边界示例（均有回归测试）：
+
+```python
+def nested(rows):
+    # 1 + 两个生成器 + 两个筛选条件 = 5
+    return [[x for x in row if x > 0] for row in rows if row]
+
+
+def guarded():
+    # 1 + 两个 except = 3；try / else / finally 本身不加分
+    try:
+        work()
+    except ValueError:
+        recover()
+    except TypeError:
+        reject()
+    else:
+        accept()
+    finally:
+        cleanup()
+
+
+def choose(x):
+    # 1 + 一个非默认 case = 2；模式中的 | 不是布尔 or，不额外加分
+    match x:
+        case 1 | 2:
+            return True
+        case _:
+            return False
+```
+
+嵌套结构不另设加权；嵌套太深仍可能难读，需要人工评审。match 的 guard 另加1，其中布尔表达式仍按规则计分。
+
 静态依赖检查覆盖 Python 的 import／from，包括相对导入，禁止未声明的跨层依赖及文件级循环。不能识别任意动态导入、SQL 或其他语言，不冒充完整架构验证；非 Python 项目需配置对应语言的复杂度及依赖工具。
 
 ## 测试与评审
@@ -48,6 +81,12 @@ python3 scripts/check_file_lines.py
 按 [变更评审清单](change-review.md) 记录正常、禁止、异常及适用的并发／幂等路径，绑定候选提交与实际结果。复杂度低于阈值仍需评审职责、嵌套、状态组合及可读性。
 
 权限、审批、金额、库存、数量或迁移等高风险变更需安排独立评审；未取得时写明“未独立评审”，不能自行宣称通过。不设置一个通用覆盖率百分比来代替业务行为测试。
+
+## 其他语言、CI 与旧项目
+
+具体工具、可复制配置和接入步骤见 [integration-guide.md](integration-guide.md)：包含 ESLint complexity、导入边界、argv 命令接入、快照依赖限制、GitHub／GitLab 模板及旧项目盘点。
+
+Python 3.12+ 是 CLI 的显式启动检查，不依赖 shebang 保证版本。hook 只支持 POSIX 环境，原生 Windows 使用 WSL2；junction 有防护和模拟测试，不宣称原生 Windows 已完成验收。
 
 ## 本地自动门禁
 

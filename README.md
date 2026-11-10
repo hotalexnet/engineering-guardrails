@@ -59,7 +59,8 @@ The project initializer then copies a self-contained gate kit into the target re
 - `quality-gates.json` — Python source roots, module ownership, allowed layers, and complexity limit.
 - `.githooks/` — staged-snapshot and outgoing-tip checks.
 - `tests/` — regression tests for the gate tools and deliberately invalid changes.
-- `docs/` — gate rules and a change-review/test-matrix template.
+- `docs/` — gate rules, a concrete review/test-matrix template, and an integration guide.
+- `examples/` — GitHub Actions and GitLab CI templates; neither is automatically enabled.
 
 The initializer checks all destinations before copying and refuses conflicting content.
 It does not modify `AGENTS.md`, install dependencies, stage files, commit, or push.
@@ -80,7 +81,12 @@ Run these commands from the target repository root after initialization.
 | Inspect the active hook configuration | `git config --show-origin --get core.hooksPath` |
 
 `pre-commit` checks the full staged snapshot. `pre-push` checks each outgoing reference's
-local tip, excluding deletions; it does not replay every historical commit.
+local tip, excluding deletions; it deduplicates identical SHAs and does not replay every historical commit.
+
+Optional `commands` in `quality-gates.json` run additional argv-array commands, without a shell,
+inside the same working tree or snapshot. This is the entry point for frontend lint and test tools;
+nonzero exits block the gate. Snapshot dependencies must be prepared explicitly—not borrowed
+from the working copy. See the [integration guide](./assets/project-kit/docs/integration-guide.md).
 
 ## Features
 
@@ -98,7 +104,8 @@ local tip, excluding deletions; it does not replay every historical commit.
   instead of replacing them.
 - **Function complexity:** Python functions default to a maximum AST branch score of 15.
   This is a project default—not an industry standard or a claim of equivalence to Radon/Sonar.
-  Nested functions and lambdas are measured independently; see the [metric definition](./references/project-gates.md).
+  Nested functions and lambdas are measured independently; see the [metric definition](./references/project-gates.md)
+  and [scored examples](./assets/project-kit/docs/engineering-gates.md#复杂度与模块边界).
 - **Declared module boundaries:** configure source roots, layer ownership and allowed imports.
   Unowned modules, forbidden cross-layer imports and static import cycles fail checks.
   The starter configuration covers the gate tools; declare actual application modules as they are added.
@@ -178,8 +185,12 @@ do not silently relax thresholds to make a check pass.
   do not label the implementer's self-check as someone else's approval.
 - Add application tests and language-specific checks to the project entry point. Tool tests
   are not application acceptance.
-- Inspect legacy projects before changing them; do not automatically restructure them.
-- The tools target Git repositories and require Python 3.12+ and Git.
+- Inspect legacy projects before changing them; follow the [inventory and migration steps](./assets/project-kit/docs/integration-guide.md#4-旧项目渐进接入).
+  There is no automatic baseline/exemption or `--diff` mode. Do not raise the global 1000-line cap to hide debt.
+- Every CLI explicitly requires Python 3.12+. Hooks require a POSIX shell; native Windows installation
+  is rejected in favor of WSL2. Junction protection has simulated tests, not native Windows acceptance.
+- JS/TS ESLint examples and GitLab templates need validation in the target project; they are not
+  claimed as end-to-end tested frontend or GitLab integrations.
 
 ## Development
 
@@ -199,6 +210,11 @@ application branches. The Python tools use only the standard library.
 [GitHub Actions](./.github/workflows/quality.yml) runs these checks on pushes and pull
 requests with Python 3.12 and 3.13. A workflow is not branch protection: required checks
 and independent approvals must still be configured on the hosting platform.
+
+For a target project, start from the [GitHub](./assets/project-kit/examples/github-actions-quality.yml)
+or [GitLab](./assets/project-kit/examples/gitlab-ci-quality.yml) template and review its runtime and
+locked dependencies. The [review response](./docs/review-response.md) records which reported issues
+were reproduced, corrected, already covered, or deliberately deferred.
 
 ## Project structure
 

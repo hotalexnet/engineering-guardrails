@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Copy the portable gate kit to a Git root; never overwrite different files."""
 
-import argparse
-import subprocess
 import sys
+
+if sys.version_info < (3, 12):
+    sys.exit("engineering-guardrails requires Python 3.12+")
+
+import argparse
+import os
+import subprocess
 from pathlib import Path
 
 
@@ -14,14 +19,19 @@ FILES = (
     "tests/test_file_lines.py", "tests/test_python_design.py",
     "tests/test_quality_gates.py", ".githooks/pre-commit",
     ".githooks/pre-push", "docs/engineering-gates.md",
-    "docs/change-review.md", "quality-gates.json",
+    "docs/change-review.md", "docs/integration-guide.md", "quality-gates.json",
+    "examples/github-actions-quality.yml", "examples/gitlab-ci-quality.yml",
 )
+
+
+def is_link(path):
+    return path.is_symlink() or path.is_junction()
 
 
 def conflict_reason(root, target, source):
     parents = [parent for parent in target.parents if root in parent.parents]
-    if target.is_symlink() or any(parent.is_symlink() for parent in parents):
-        return "symlink"
+    if is_link(target) or any(is_link(parent) for parent in parents):
+        return "symlink or junction"
     if any(parent.exists() and not parent.is_dir() for parent in parents):
         return "parent is not a directory"
     if target.exists():
@@ -60,7 +70,7 @@ def initialize(root):
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("xb") as output:
             output.write(source.read_bytes())
-        if ".githooks" in target.parts:
+        if ".githooks" in target.parts and os.name != "nt":
             target.chmod(0o755)
         print(f"Created {target.relative_to(root)}")
     print(f"Ready: {len(pending)} files created; existing identical files preserved.")

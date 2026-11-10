@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Static Python function-complexity, declared-layer and import-cycle checks."""
 
+import sys
+
+if sys.version_info < (3, 12):
+    sys.exit("engineering-guardrails requires Python 3.12+")
+
 import argparse
 import ast
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from check_file_lines import file_contents, git, snapshot_tree
@@ -50,22 +54,55 @@ def function_scores(tree):
             yield node.lineno, getattr(node, "name", "<lambda>"), visitor.score
 
 
+def object_value(value, label):
+    if not isinstance(value, dict):
+        raise ValueError(f"quality-gates.json: {label} must be an object")
+    return value
+
+
+def string_list(value, label, allow_empty=False):
+    if not isinstance(value, list):
+        raise ValueError(f"quality-gates.json: {label} must be an array of strings")
+    if not value and not allow_empty:
+        raise ValueError(f"quality-gates.json: {label} must not be empty")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"quality-gates.json: {label} contains an invalid string")
+    return value
+
+
+def validate_layers(value):
+    layers = object_value(value, "python.layers")
+    if not layers:
+        raise ValueError("quality-gates.json: python.layers must not be empty")
+    for name, value in layers.items():
+        label = f"python.layers.{name}"
+        layer = object_value(value, label)
+        modules = string_list(layer.get("modules"), label + ".modules")
+        if any(not part.isidentifier() for module in modules for part in module.split(".")):
+            raise ValueError(f"quality-gates.json: {label}.modules needs dotted Python names")
+        allowed = string_list(layer.get("allow"), label + ".allow", allow_empty=True)
+        if set(allowed) - layers.keys():
+            raise ValueError(f"quality-gates.json: {label}.allow contains an unknown layer")
+    return layers
+
+
 def load_settings(contents):
     raw = contents.get(Path("quality-gates.json"))
     if raw is None:
         raise ValueError("quality-gates.json is required; define Python module ownership")
-    settings = json.loads(raw)["python"]
-    limit, roots, layers = (settings["max_function_complexity"],
-                           settings["source_roots"], settings["layers"])
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"quality-gates.json:{error.lineno}:{error.colno}: {error.msg}") from error
+    config = object_value(config, "root")
+    settings = object_value(config.get("python"), "python")
+    limit = settings.get("max_function_complexity")
     if type(limit) is not int or limit < 1:
-        raise ValueError("complexity limit must be a positive integer")
-    if not roots or any(Path(r).is_absolute() or ".." in Path(r).parts for r in roots):
-        raise ValueError("source_roots must be nonempty relative paths")
-    if not layers:
-        raise ValueError("at least one Python layer is required")
-    for name, layer in layers.items():
-        if not layer["modules"] or set(layer["allow"]) - layers.keys():
-            raise ValueError(f"invalid module/allow list for layer {name}")
+        raise ValueError("quality-gates.json: python.max_function_complexity must be a positive integer")
+    roots = string_list(settings.get("source_roots"), "python.source_roots")
+    if any(Path(root).is_absolute() or ".." in Path(root).parts for root in roots):
+        raise ValueError("quality-gates.json: python.source_roots must be relative paths without '..'")
+    layers = validate_layers(settings.get("layers"))
     return limit, sorted(map(Path, roots), key=lambda p: len(p.parts), reverse=True), layers
 
 

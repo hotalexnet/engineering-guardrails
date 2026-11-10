@@ -14,10 +14,10 @@
 
 ## 文件与职责
 
-- `quality-gates.json`：Python 函数阈值、源码根、模块所属层及允许依赖。
+- `quality-gates.json`：Python 函数阈值、源码根、模块所属层、允许依赖，以及可选额外 argv 命令。
 - `scripts/check_file_lines.py`：工作区、暂存快照或指定 Git 树的1000行检查。
 - `scripts/check_python_design.py`：Python 复杂度、声明层依赖及静态循环检查。
-- `scripts/check_quality.py`：统一运行以上检查和 `tests/test_*.py`。
+- `scripts/check_quality.py`：统一运行以上检查、配置的额外命令及 `tests/test_*.py`。
 - `scripts/install_hooks.py`：设置当前仓库 `core.hooksPath=.githooks`，拒绝接管已有其他 hook。
 - `.githooks/pre-commit`：检查完整暂存快照。
 - `.githooks/pre-push`：检查待推送引用的本地 tip，不检查删除操作或逐个回放历史。
@@ -25,9 +25,11 @@
 - `tests/test_python_design.py`：复杂度15／16、允许／禁止依赖、相对导入循环及归属错误。
 - `tests/test_quality_gates.py`：真实 hook 拦截、快照隔离、缺文件／零测试、安装冲突。
 - `docs/engineering-gates.md`：项目规则、度量口径和强制能力边界。
-- `docs/change-review.md`：测试矩阵、模块影响、独立评审和发布证据记录模板。
+- `docs/change-review.md`：测试矩阵、模块影响、独立评审和发布证据记录模板，含填写示例。
+- `docs/integration-guide.md`：JS／TS 接入、快照依赖、CI、平台限制及旧项目迁移。
+- `examples/github-actions-quality.yml`、`examples/gitlab-ci-quality.yml`：不自动启用的目标项目 CI 模板。
 
-依赖 Python 3.12+ 和 Git，快照导出使用 tarfile data filter，无第三方 Python 依赖。
+依赖 Python 3.12+ 和 Git，各 CLI 在启动阶段明确检查版本；快照导出使用 tarfile data filter，无第三方 Python 依赖。hook 支持 POSIX shell，原生 Windows 使用 WSL2。
 
 ## 复杂度与依赖口径
 
@@ -54,7 +56,11 @@ python3 scripts/check_python_design.py
 
 `--staged` 用 git write-tree 固定索引，不创建提交或改变暂存内容；冲突会失败。快照检查使用该快照的配置和源文件，测试在临时导出目录执行，不能用工作区修复冒充提交通过。
 
-无测试或测试失败均失败。增加业务及其他语言后，需要把实际测试命令接入入口，Python 工具测试不是应用验收。新增规则要注入违规反例，验证 hook 同样会失败。
+无测试或测试失败均失败。子进程将导出目录自身的 `scripts/` 加入 sys.path，支持工具裸导入，不从工作区借入源码。
+
+增加业务及其他语言后，通过顶层 `commands` 配置 argv 数组命令（不使用 shell），在同一工作区／快照运行；命令非零即失败。快照不包含 node_modules／.git 等未跟踪资源，准备依赖必须显式配置并确认授权。Python 工具测试不是应用验收，新增规则要注入违规反例，验证 hook 同样会失败。
+
+错误 JSON 提供文件名与行／列，配置类型和字段错误提供具体字段，不以 Python traceback 作为用户提示。
 
 ## 独立评审与强制能力
 
@@ -64,4 +70,6 @@ python3 scripts/check_python_design.py
 
 CI 应在干净检出、固定候选提交和受控依赖环境执行入口；门禁／阈值／测试删除同样需审查。Git archive 受 export-ignore 影响，不得借导出属性排除受测代码；缺必需检查文件或测试会失败。
 
-本 Skill 仓库的 GitHub 工作流独立于目标项目工具包。工作流配置存在不等于已运行成功，也不等于主分支保护已开启，交付时分别报告。
+本 Skill 仓库的 GitHub 工作流独立于目标项目工具包。目标模板放在 examples/，由维护者审查后整合。工作流配置存在不等于已运行成功，也不等于主分支保护已开启，交付时分别报告。
+
+全量架构检查保留以发现跨文件循环；当前不提供 --diff 或自动旧文件豁免。旧项目的盘点、技术债和渐进接入步骤见项目接入指南，不调高1000行全局上限。

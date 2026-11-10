@@ -1,10 +1,14 @@
 """Initialization must be additive, repeatable, and repository-local."""
 
+import json
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+import runpy
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/init_project.py"
@@ -59,6 +63,43 @@ class InitializerTests(unittest.TestCase):
         (self.root / "scripts").write_text("not a directory\n")
         self.assertNotEqual(self.initialize().returncode, 0)
         self.assertFalse((self.root / ".githooks").exists())
+
+    def test_junction_parent_refused_before_copy(self):
+        namespace = runpy.run_path(str(SCRIPT))
+        with patch.object(Path, "is_junction", lambda path: path == self.root / "scripts"):
+            with self.assertRaisesRegex(ValueError, "junction"):
+                namespace["initialize"](self.root)
+        self.assertFalse((self.root / ".githooks").exists())
+
+    def test_all_cli_entrypoints_reject_python_311_early(self):
+        kit = SCRIPT.parents[1] / "assets/project-kit/scripts"
+        entries = [SCRIPT, *(kit / name for name in (
+            "check_file_lines.py", "check_python_design.py", "check_quality.py", "install_hooks.py"))]
+        runner = "import runpy, sys; sys.version_info = (3, 11, 0); runpy.run_path(sys.argv[1], run_name='__main__')"
+        for entry in entries:
+            with self.subTest(entry=entry.name):
+                result = subprocess.run([sys.executable, "-c", runner, str(entry)],
+                                        text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("requires Python 3.12+", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_skill_readme_and_reference_local_links_exist(self):
+        root = SCRIPT.parents[1]
+        for name in ("SKILL.md", "README.md", "README.zh-CN.md"):
+            for target in re.findall(r"\]\(([^)]+)\)", (root / name).read_text()):
+                if not target.startswith(("http://", "https://", "#")):
+                    with self.subTest(file=name, target=target):
+                        self.assertTrue((root / target.split('#')[0]).exists())
+        self.assertTrue((root / "references/project-gates.md").is_file())
+        self.assertTrue((root / ".github/workflows/quality.yml").is_file())
+
+    def test_quality_entry_layer_is_declared_in_both_configurations(self):
+        root = SCRIPT.parents[1]
+        for path in (root / "quality-gates.json", root / "assets/project-kit/quality-gates.json"):
+            entry = json.loads(path.read_text())["python"]["layers"]["entry"]
+            self.assertIn("check_quality", entry["modules"])
+            self.assertIn("checks", entry["allow"])
 
     def test_subdirectory_not_mistaken_for_project_root(self):
         child = self.root / "child"

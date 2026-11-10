@@ -85,6 +85,33 @@ class PythonDesignTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one layer"):
             analyze(sources({"src/app.py": "x = 1\n"}, layers))
 
+    def test_nested_comprehension_score_is_five(self):
+        code = "def f(rows):\n    return [[x for x in row if x > 0] for row in rows if row]\n"
+        self.assertEqual(list(function_scores(ast.parse(code)))[0][2], 5)
+
+    def test_try_else_finally_only_counts_except_handlers(self):
+        code = ("def f():\n    try: run()\n    except ValueError: pass\n"
+                "    except TypeError: pass\n    else: done()\n    finally: clean()\n")
+        self.assertEqual(list(function_scores(ast.parse(code)))[0][2], 3)
+
+    def test_or_pattern_is_one_match_case_not_a_boolean_operator(self):
+        code = "def f(x):\n    match x:\n        case 1 | 2: return 1\n        case _: return 0\n"
+        self.assertEqual(list(function_scores(ast.parse(code)))[0][2], 2)
+
+    def test_invalid_settings_types_have_field_specific_errors(self):
+        cases = (("source_roots", "src", "source_roots"),
+                 ("source_roots", [7], "source_roots"),
+                 ("layers", [], "layers"),
+                 ("max_function_complexity", True, "max_function_complexity"))
+        for key, value, message in cases:
+            with self.subTest(key=key, value=value):
+                content = sources({"src/app.py": "x = 1\n"})
+                config = json.loads(content[Path("quality-gates.json")])
+                config["python"][key] = value
+                content[Path("quality-gates.json")] = json.dumps(config).encode()
+                with self.assertRaisesRegex(ValueError, message):
+                    analyze(content)
+
     def test_match_branches_and_guard_count(self):
         code = "def f(x):\n    match x:\n        case 1 if x: return 1\n        case _: return 0\n"
         self.assertEqual(list(function_scores(ast.parse(code)))[0][2], 3)

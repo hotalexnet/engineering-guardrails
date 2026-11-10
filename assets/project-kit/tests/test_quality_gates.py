@@ -121,6 +121,76 @@ class QualityGateTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("no tests discovered", result.stderr)
 
+    def test_snapshot_supports_bare_script_imports_without_using_worktree(self):
+        path = self.root / "scripts/check_file_lines.py"
+        original = path.read_text()
+        path.write_text(original + '\nSNAPSHOT_MARKER = "staged"\n')
+        self.test.write_text(
+            "import unittest\nfrom check_file_lines import SNAPSHOT_MARKER\n"
+            "class Smoke(unittest.TestCase):\n"
+            "    def test_snapshot(self): self.assertEqual(SNAPSHOT_MARKER, 'staged')\n")
+        self.git("add", "scripts/check_file_lines.py", "tests/test_file_lines.py")
+        path.write_text(original + '\nSNAPSHOT_MARKER = "working"\n')
+        result = self.quality("--staged")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pre_push_deduplicates_same_sha_for_two_branches(self):
+        self.git("commit", "-m", "valid fixture")
+        sha = self.git("rev-parse", "HEAD").stdout.strip()
+        refs = ''.join(f"refs/heads/{name} {sha} refs/heads/{name} {'0' * 40}\n"
+                       for name in ("one", "two"))
+        result = self.quality("--pre-push", input=refs)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("Checking push tip:"), 1)
+
+    def test_extra_command_uses_snapshot_configuration(self):
+        path = self.root / "quality-gates.json"
+        config = json.loads(path.read_text())
+        config["commands"] = [[sys.executable, "-c", "print('staged-command')"]]
+        path.write_text(json.dumps(config))
+        self.git("add", "quality-gates.json")
+        config["commands"] = [[sys.executable, "-c", "raise SystemExit(99)"]]
+        path.write_text(json.dumps(config))
+        result = self.quality("--staged")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("staged-command", result.stdout)
+
+    def test_extra_command_failure_blocks_gate(self):
+        path = self.root / "quality-gates.json"
+        config = json.loads(path.read_text())
+        config["commands"] = [[sys.executable, "-c", "raise SystemExit(7)"]]
+        path.write_text(json.dumps(config))
+        self.git("add", "quality-gates.json")
+        self.assertEqual(self.quality("--staged").returncode, 7)
+
+    def test_shell_command_string_is_rejected_without_traceback(self):
+        path = self.root / "quality-gates.json"
+        config = json.loads(path.read_text())
+        config["commands"] = ["npm run lint && echo bypass"]
+        path.write_text(json.dumps(config))
+        result = self.quality()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("commands[0]", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_bad_configuration_reports_filename_without_traceback(self):
+        path = self.root / "quality-gates.json"
+        for content in ('{broken', '{"python": {"source_roots": "scripts"}}'):
+            with self.subTest(content=content):
+                path.write_text(content)
+                result = self.quality()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("quality-gates.json", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_native_windows_hook_installation_is_explicitly_rejected(self):
+        runner = "import runpy, os; os.name = 'nt'; runpy.run_path('scripts/install_hooks.py', run_name='__main__')"
+        result = subprocess.run([sys.executable, "-c", runner], cwd=self.root,
+                                text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("native Windows is unsupported", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_valid_pre_push_tip_passes(self):
         self.git("commit", "-m", "valid fixture")
         sha = self.git("rev-parse", "HEAD").stdout.strip()

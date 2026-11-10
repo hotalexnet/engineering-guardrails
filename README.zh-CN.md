@@ -57,7 +57,8 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 - `quality-gates.json`：Python 源码根、模块归属、允许依赖及复杂度阈值。
 - `.githooks/`：暂存快照及待推送 tip 检查。
 - `tests/`：门禁工具及故意违规场景的回归测试。
-- `docs/`：门禁规则、变更评审和测试矩阵模板。
+- `docs/`：门禁规则、带示例的变更评审和测试矩阵、具体接入指南。
+- `examples/`：GitHub Actions 和 GitLab CI 模板，不自动启用或覆盖流水线。
 
 初始化器复制前预检全部目标，遇到冲突内容即停止，不修改 `AGENTS.md`，
 不安装依赖、不暂存、不提交、不推送。
@@ -78,7 +79,11 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 | 查看当前 hook 配置 | `git config --show-origin --get core.hooksPath` |
 
 `pre-commit` 检查完整暂存快照。`pre-push` 检查待推送引用的本地 tip，
-删除引用除外，不逐个回放全部历史提交。
+删除引用除外，相同 SHA 去重，不逐个回放全部历史提交。
+
+`quality-gates.json` 可选的 `commands` 以 argv 数组运行额外工具，不调用 shell，
+在同一工作区或快照执行，非零结果阻断门禁。前端 lint／测试通过该入口接入；
+快照依赖必须显式准备，不能借用工作区源码。具体见[接入指南](./assets/project-kit/docs/integration-guide.md)。
 
 ## 主要功能
 
@@ -90,7 +95,8 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 - **验证失败路径：** 测试主动注入超限文件、失败测试、门禁文件缺失及空测试集。
 - **不覆盖已有配置：** 初始化器及 hook 安装器遇到冲突即停止，不接管已有其他门禁。
 - **函数复杂度：** Python 函数默认 AST 分支分数最多15，这是项目默认值，不是行业标准，
-  也不宣称与 Radon／Sonar 完全等价。嵌套函数和 lambda 独立度量，见[度量定义](./references/project-gates.md)。
+  也不宣称与 Radon／Sonar 完全等价。嵌套函数和 lambda 独立度量，见[度量定义](./references/project-gates.md)
+  和[带分数的示例](./assets/project-kit/docs/engineering-gates.md#复杂度与模块边界)。
 - **声明模块边界：** 配置源码根、模块所属层和允许依赖。未归属模块、未授权跨层导入及静态循环会失败。
   初始配置描述门禁工具本身，增加业务模块时必须声明实际边界。
 - **测试与评审结合：** 按[评审清单](./assets/project-kit/docs/change-review.md)记录正常、禁止、异常和适用的并发路径。
@@ -158,8 +164,11 @@ Git 不会自动启用它们。
 - 工具包检查声明的 Python 依赖，不等于识别所有架构耦合；**没有自动实现权限、业务流程、数据访问或并发测试**。
 - 评审模板不会自动批准变更。高风险改动需独立评审，不把实现者自查当成他人批准。
 - 真实应用测试及其他语言检查需要接入项目入口；工具测试不等于应用验收。
-- 旧项目先评估，不自动批量改造。
-- 工具面向 Git 仓库，需要 Python 3.12+ 和 Git。
+- 旧项目先评估，按[盘点及渐进迁移步骤](./assets/project-kit/docs/integration-guide.md#4-旧项目渐进接入)接入。
+  当前无自动基线／豁免或 `--diff` 模式，不提高1000行全局上限来掩盖技术债。
+- 每个 CLI 明确要求 Python 3.12+；hook 需要 POSIX shell，原生 Windows 安装明确拒绝，建议 WSL2。
+  junction 有模拟测试，不等于原生 Windows 已完成验收。
+- JS／TS ESLint 示例和 GitLab 模板需在目标项目验证，不宣称已完成前端或 GitLab 端到端验收。
 
 ## 开发和测试
 
@@ -177,6 +186,10 @@ git diff --check
 
 [GitHub Actions](./.github/workflows/quality.yml) 在推送和合并请求上使用 Python 3.12、3.13 运行这些检查。
 工作流不等于分支保护：必要检查及独立审核要求仍需在托管平台另行配置。
+
+目标项目可从 [GitHub 模板](./assets/project-kit/examples/github-actions-quality.yml)
+或 [GitLab 模板](./assets/project-kit/examples/gitlab-ci-quality.yml)开始，审查运行时及锁定依赖后采用。
+本次审查建议哪些已复现、修复、已有覆盖或暂缓，见[核对记录](./docs/review-response.md)。
 
 ## 项目结构
 

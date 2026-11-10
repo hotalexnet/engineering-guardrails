@@ -1,4 +1,5 @@
 {
+  "commands": [],
   "python": {
     "max_function_complexity": 15,
     "source_roots": ["scripts", "tests"],

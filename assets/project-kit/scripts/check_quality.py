@@ -1,16 +1,37 @@
 #!/usr/bin/env python3
 """Local/CI quality entry; snapshot checks do not test unrelated working files."""
 
+import sys
+
+if sys.version_info < (3, 12):
+    sys.exit("engineering-guardrails requires Python 3.12+")
+
 import argparse
 import io
+import json
 import subprocess
-import sys
 import tarfile
 import tempfile
 from pathlib import Path
 
 from check_file_lines import check, git, snapshot_tree
 from check_python_design import check as check_design
+
+
+def run_commands(root):
+    commands = json.loads((root / "quality-gates.json").read_text(encoding="utf-8")).get("commands", [])
+    if not isinstance(commands, list):
+        raise ValueError("quality-gates.json: commands must be an array of argv arrays")
+    for index, command in enumerate(commands):
+        if not isinstance(command, list) or not command:
+            raise ValueError(f"quality-gates.json: commands[{index}] must be a nonempty argv array")
+        if any(not isinstance(arg, str) or not arg for arg in command):
+            raise ValueError(f"quality-gates.json: commands[{index}] arguments must be nonempty strings")
+        print(f"Project command: {command}", flush=True)
+        result = subprocess.run(command, cwd=root, check=False)
+        if result.returncode:
+            return result.returncode
+    return 0
 
 
 def run_tests(root):
@@ -20,9 +41,14 @@ def run_tests(root):
     if any(not (root / name).is_file() for name in required):
         print("FAIL: required gate files/tests are missing", file=sys.stderr)
         return 1
+    status = run_commands(root)
+    if status:
+        return status
     runner = """
 import sys
 import unittest
+from pathlib import Path
+sys.path.insert(0, str(Path('scripts').resolve()))
 suite = unittest.defaultTestLoader.discover('tests', pattern='test_*.py')
 if suite.countTestCases() == 0:
     sys.exit('FAIL: no tests discovered')

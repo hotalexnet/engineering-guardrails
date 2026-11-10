@@ -1,0 +1,13 @@
+# Review and merge into .gitlab-ci.yml; do not replace an existing pipeline.
+# For reproducibility, pin an approved image digest in the target project.
+image: python:3.12-bookworm
+stages:
+  - test
+quality:
+  stage: test
+  timeout: 15m
+  script:
+    - python3 --version
+    - git --version
+    # Add the application's locked dependency setup before the gate if needed.
+    - python3 scripts/check_quality.py

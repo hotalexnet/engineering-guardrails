@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Check working files or a Git snapshot against a 1000 physical-line limit."""
 
+import sys
+
+if sys.version_info < (3, 12):
+    sys.exit("engineering-guardrails requires Python 3.12+")
+
 import argparse
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 
