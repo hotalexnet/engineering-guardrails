@@ -54,7 +54,7 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 项目初始化器会向目标仓库复制一套自包含门禁：
 
 - `scripts/`：行数、Python 复杂度／依赖检查、统一质量入口和 hook 安装器。
-- `quality-gates.json`：Python 源码根、模块归属、允许依赖及复杂度阈值。
+- `quality-gates.json`：Python 源码根、模块归属、允许依赖、分支分数上限及嵌套警告阈值。
 - `.githooks/`：暂存快照及待推送 tip 检查。
 - `tests/`：门禁工具及故意违规场景的回归测试。
 - `docs/`：门禁规则、带示例的变更评审和测试矩阵、具体接入指南。
@@ -74,7 +74,7 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 | 检查完整暂存快照及其测试 | `python3 scripts/check_quality.py --staged` |
 | 检查指定提交快照 | `python3 scripts/check_quality.py --revision HEAD` |
 | 只检查文件行数 | `python3 scripts/check_file_lines.py` |
-| 检查 Python 复杂度和声明的依赖 | `python3 scripts/check_python_design.py` |
+| 检查 Python 复杂度、嵌套警告和声明的依赖 | `python3 scripts/check_python_design.py` |
 | 启用仓库本地 hook | `python3 scripts/install_hooks.py` |
 | 查看当前 hook 配置 | `git config --show-origin --get core.hooksPath` |
 
@@ -97,11 +97,38 @@ Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`�
 - **函数复杂度：** Python 函数默认 AST 分支分数最多15，这是项目默认值，不是行业标准，
   也不宣称与 Radon／Sonar 完全等价。嵌套函数和 lambda 独立度量，见[度量定义](./references/project-gates.md)
   和[带分数的示例](./assets/project-kit/docs/engineering-gates.md#复杂度与模块边界)。
-  另报控制块嵌套深度：`python.max_nesting_depth` 默认4，超过仅警告、不阻断；elif 同层，嵌套函数独立，表达式不计控制块深度，完整口径见上述文档。
+- **嵌套深度警告：** 独立于分支分数，报告函数最大控制块嵌套深度。
+  默认超过4层仅警告，不改变退出码、不阻断 hook；`elif` 算同层，嵌套函数独立计算。
 - **声明模块边界：** 配置源码根、模块所属层和允许依赖。未归属模块、未授权跨层导入及静态循环会失败。
   初始配置描述门禁工具本身，增加业务模块时必须声明实际边界。
 - **测试与评审结合：** 按[评审清单](./assets/project-kit/docs/change-review.md)记录正常、禁止、异常和适用的并发路径。
   写明独立评审人及结论，或明确“未独立评审”；覆盖率百分比和检查全绿不代替行为证据或人工评审。
+
+## Python 复杂度：阻断与提示
+
+两个指标互补，不宣称等同于标准圈复杂度或认知复杂度：
+
+| 指标 | `python` 下的配置项 | 默认值 | 超过后的行为 |
+| --- | --- | --- | --- |
+| AST 分支分数 | `max_function_complexity` | 15 | 检查失败 |
+| 最大控制块嵌套深度 | `max_nesting_depth` | 4 | 仅警告 |
+
+配置项放在 `quality-gates.json` 现有的 `python` 对象中，保留源码根和层声明。
+旧配置未填写 `max_nesting_depth` 时同样默认4。嵌套阈值必须为正整数；非法配置仍会导致检查失败。
+
+函数顶层深度为0。`if`、循环、`with`、`try`／`try*`、`match` 每进入一层加1，包含异步变体。
+`else`、`except`、`finally`、`case` 不额外加层；显式在 `else` 内再写 `if` 则多一层。
+表达式和推导式不计控制块深度，其中的决策仍由分支分数覆盖。
+
+深度4不警告，深度5输出类似提示：
+
+```text
+WARNING: src/app.py:1: run nesting depth 5 > 4 (advisory only)
+```
+
+暂存和提交检查使用对应快照中的代码与配置。4只是需要真实项目样本验证的初始警告值，不是行业标准。
+先观察误报并评审可读性，再考虑另行确认是否升级为阻断规则；不为消除警告机械抽函数。
+完整定义和示例见[项目规则](./assets/project-kit/docs/engineering-gates.md#复杂度与模块边界)。
 
 ## 门禁如何工作
 
@@ -182,6 +209,10 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 -m unittest discover -s assets/project-kit/tests -p 'test_*.py' -v
 git diff --check
 ```
+
+以上是 Skill 仓库自身的开发命令；`scripts/check_quality.py` 是初始化后目标项目的统一入口，
+不适用于 Skill 仓库根目录。测试覆盖嵌套4／5层边界、`elif`、独立作用域、配置校验，
+以及真实 hook 使用快照代码／配置、输出警告但允许通过的行为。
 
 测试使用独立临时 Git 仓库，不在业务分支制造测试提交。Python 工具仅使用标准库。
 
