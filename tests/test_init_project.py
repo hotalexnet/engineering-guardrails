@@ -24,7 +24,7 @@ class InitializerTests(unittest.TestCase):
     def initialize(self, root=None):
         return subprocess.run(
             [sys.executable, str(SCRIPT), "--repo", str(root or self.root)],
-            text=True, capture_output=True)
+            cwd=self.root, text=True, capture_output=True)
 
     def test_fresh_project_and_repeat(self):
         self.assertEqual(self.initialize().returncode, 0)
@@ -36,6 +36,18 @@ class InitializerTests(unittest.TestCase):
         hook = subprocess.run(["git", "config", "--local", "--get", "core.hooksPath"],
                               cwd=self.root, capture_output=True)
         self.assertNotEqual(hook.returncode, 0)
+
+    def test_templates_and_guide_are_copied_from_kit(self):
+        result = self.initialize()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        kit = SCRIPT.parents[1] / "assets/project-kit"
+        for relative in ("examples/github-actions-quality.yml",
+                         "examples/gitlab-ci-quality.yml", "docs/integration-guide.md"):
+            with self.subTest(path=relative):
+                self.assertTrue((kit / relative).is_file())
+                self.assertEqual((self.root / relative).read_bytes(),
+                                 (kit / relative).read_bytes())
+        self.assertFalse((self.root / ".github/workflows/quality.yml").exists())
 
     def test_fresh_project_quality_gate_passes(self):
         self.assertEqual(self.initialize().returncode, 0)

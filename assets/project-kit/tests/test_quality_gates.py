@@ -46,6 +46,17 @@ class QualityGateTests(unittest.TestCase):
             [sys.executable, "scripts/check_quality.py", *args],
             cwd=self.root, text=True, capture_output=True, input=input)
 
+    def test_diff_is_explicitly_rejected_with_full_graph_reason(self):
+        for args in (("--diff", "HEAD~1..HEAD"), ("--diff",)):
+            with self.subTest(args=args):
+                result = self.quality(*args)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("--diff is not supported", result.stderr)
+                self.assertIn("full dependency graph", result.stderr)
+                self.assertNotIn("unrecognized arguments", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertNotIn("PASS:", result.stdout)
+
     def test_valid_commit_hook_passes(self):
         self.assertEqual(self.git("commit", "-m", "valid", check=False).returncode, 0)
 

@@ -231,6 +231,7 @@ engineering-guardrails/
 │       ├── scripts/
 │       ├── .githooks/
 │       ├── tests/
+│       ├── examples/                # CI templates copied to the target project
 │       ├── quality-gates.json
 │       └── docs/                    # gate rules and change-review checklist
 ├── tests/test_init_project.py

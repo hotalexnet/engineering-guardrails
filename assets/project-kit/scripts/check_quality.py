@@ -94,7 +94,12 @@ def main():
     modes.add_argument("--staged", action="store_true")
     modes.add_argument("--revision")
     modes.add_argument("--pre-push", action="store_true")
+    modes.add_argument("--diff", nargs="?", const="", metavar="RANGE",
+                       help="Unsupported: cross-file cycle checks require the full dependency graph")
     args = parser.parse_args()
+    if args.diff is not None:
+        parser.error("--diff is not supported: a full dependency graph is required to detect "
+                     "cross-file cycles. Run without --diff for full checks.")
     try:
         root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").decode().strip())
         if args.pre_push:

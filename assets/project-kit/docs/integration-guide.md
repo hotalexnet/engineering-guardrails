@@ -83,10 +83,12 @@ export default [{
 
 ## 3. 目标项目 CI 模板
 
-初始化器复制到 `examples/` 的两个示例：
+Skill 仓库中的源模板位于 `assets/project-kit/examples/`，不是仓库根目录的 `examples/`。初始化器以 `KIT = <Skill根>/assets/project-kit` 为源根，再把两个示例复制到**目标项目**的 `examples/`：
 
 - `examples/github-actions-quality.yml`：审查后合并到 `.github/workflows/quality.yml`。
 - `examples/gitlab-ci-quality.yml`：审查后合并到 `.gitlab-ci.yml`。
+
+`docs/integration-guide.md` 也随工具包复制到目标项目，不只是留在 Skill 内供参考，以保证项目文档不依赖本机 Skill 路径。
 
 不会自动覆盖已有 CI 或修改远端设置。根据应用补充锁定依赖及数据库服务，固定运行时；镜像发布场景应核对镜像摘要。GitHub 模板使用明确提交的 action；GitLab 镜像 tag 建议换成项目批准的 digest。
 
@@ -123,7 +125,9 @@ GitHub hosted runner 可直接运行，不要求 Docker。GitLab 示例适用于
 
 ## 5. 为什么暂不提供 --diff
 
-全量依赖图才能发现跨文件循环；只检查修改文件可能漏掉未改动模块形成的环。配置、源码根和模块归属变化也可能影响未改文件。当前没有 `--diff` 模式，不把性能优化包装成同等保障。
+全量依赖图才能发现跨文件循环；只检查修改文件可能漏掉未改动模块形成的环。配置、源码根和模块归属变化也可能影响未改文件。当前没有增量扫描模式，不把性能优化包装成同等保障。
+
+`check_quality.py --diff HEAD~1..HEAD` 或单独 `--diff` 会明确以退出码2拒绝，并提示需要完整依赖图来检测跨文件循环，而不是只返回不明参数错误。识别参数是为了说明拒绝原因，不表示已经实现增量检查。
 
 现有 pre-push 会按相同 SHA 去重。同一提交推送到多个分支只验证一次。大型项目可在 CI 使用有明确定义的提交／依赖缓存和测试分组，但仍应保留全量架构检查及必要的全量回归，新增增量功能前先建立不漏检的测试。
 

@@ -206,6 +206,7 @@ engineering-guardrails/
 │       ├── scripts/
 │       ├── .githooks/
 │       ├── tests/
+│       ├── examples/                # 随工具包复制到目标项目的 CI 模板
 │       ├── quality-gates.json
 │       └── docs/                    # 门禁规则和变更评审清单
 ├── tests/test_init_project.py
