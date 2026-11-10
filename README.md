@@ -1,42 +1,38 @@
-# Engineering Guardrails
+# engineering-guardrails
 
-面向 AI 编程代理的通用工程约束 Skill：把规则放进长期指令，把执行步骤放进 Skill，把可验证检查放进项目仓库。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Runtime: Python 3.12+](https://img.shields.io/badge/runtime-python%203.12%2B-blue.svg)](https://www.python.org/)
+[![File limit: 1000 lines](https://img.shields.io/badge/file%20limit-1000%20lines-00869a.svg)](#features)
 
-## 解决什么问题
+**English** | [中文](./README.zh-CN.md)
 
-- 手写程序单文件最多 **1000 个物理行**，含空行、注释及模板内容。
-- 按职责拆分模块，避免循环依赖、越界写数据及巨型公共工具文件。
-- 适用时验证权限、版本、状态、事务、并发和重复请求，不只测试正常路径。
-- 用反例验证门禁真的会失败，不把“检查脚本存在”等同于约束生效。
-- 不强制技术栈、微服务或通用流程引擎；旧项目先评估，不自动批量改造。
+Reusable engineering constraints for coding agents. Combine short global instructions,
+a shared skill, and repository-local checks to keep files manageable, preserve module
+boundaries, and verify actual staged or committed code—not just a passing working copy.
 
-## 安装到 Pi
+The skill uses Markdown and portable Python tools. It does not prescribe a framework,
+microservices, or the same architecture for every project.
 
-在目标目录尚不存在时：
+## Demo
+
+![Line-limit checker: 1000 lines pass; 1001 lines fail](./assets/demo.svg)
+
+The diagram reproduces checker output from an isolated Git fixture. The workflow is
+simple: load the rules, establish project-local checks, and verify that deliberate
+violations actually fail.
+
+## Quick start
+
+Requirements: Python 3.12+, Git, and a POSIX shell for the optional Git hooks.
+
+When the skill destination does not already exist:
 
 ```bash
 git clone https://github.com/hotalexnet/engineering-guardrails.git \
   ~/.agents/skills/engineering-guardrails
 ```
 
-Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`；可使用 `/skill:engineering-guardrails` 显式加载。
-
-**发现 Skill 不等于每次都加载全文。** 建议在自己的 `~/.pi/agent/AGENTS.md` 中追加简短规则，不要覆盖已有配置：
-
-```markdown
-## 工程约束
-- 新项目、代码修改／重构、门禁建立和交付前，先读取并遵循
-  ~/.agents/skills/engineering-guardrails/SKILL.md。
-- 程序单文件最多1000物理行，包含空行与注释，不得靠压缩代码绕过。
-- 新项目建立仓库内检查；旧项目先评估，不自动批量改造。
-- 只报告实际验证结果，不将本地 hook 称为远端强制门禁。
-```
-
-其他代理是否自动发现此目录、如何加载全局约定，应按对应工具配置，不假设与 Pi 相同。
-
-## 给项目建立门禁
-
-要求：Python 3.12+、Git，且目标已是独立 Git 仓库。
+Bootstrap an existing, independent Git repository:
 
 ```bash
 python3 ~/.agents/skills/engineering-guardrails/scripts/init_project.py \
@@ -45,44 +41,164 @@ python3 ~/.agents/skills/engineering-guardrails/scripts/init_project.py \
 cd /absolute/path/to/project
 python3 scripts/check_quality.py
 
-# 审核已有 hook 后，主动启用本仓库的自动门禁
+# Review existing hooks before enabling repository-local automation.
 python3 scripts/install_hooks.py
 ```
 
-初始化器先预检全部目标，不覆盖不同内容，不修改 AGENTS，不安装依赖，不暂存、不提交、不推送。存在已有实现时停止，由维护者针对性整合。
+Pi discovers the skill under `~/.agents/skills/`. Run `/reload` in an existing session,
+or load it explicitly with `/skill:engineering-guardrails`.
 
-工具复制进项目后自包含，不依赖使用者的主目录或这个 Skill 仓库运行。
+## What gets installed
 
-### 项目中的能力
+The clone places one skill under `~/.agents/skills/engineering-guardrails/`.
+The project initializer then copies a self-contained gate kit into the target repository:
 
-| 入口 | 行为 |
+- `scripts/` — line checks, the quality entry point, and the hook installer.
+- `.githooks/` — staged-snapshot and outgoing-tip checks.
+- `tests/` — regression tests for the gate tools.
+- `docs/engineering-gates.md` — project rules and enforcement limitations.
+
+The initializer checks all destinations before copying and refuses conflicting content.
+It does not modify `AGENTS.md`, install dependencies, stage files, commit, or push.
+The copied tools do not depend on this skill checkout or a particular user's home directory.
+
+## Commands
+
+Run these commands from the target repository root after initialization.
+
+| Need | Command |
 | --- | --- |
-| `python3 scripts/check_quality.py` | 检查工作区行数并运行工具测试 |
-| `python3 scripts/check_quality.py --staged` | 检查完整暂存快照，并在临时快照运行测试 |
-| `python3 scripts/check_quality.py --revision HEAD` | 检查指定提交快照 |
-| `pre-commit` | 自动检查即将提交的暂存快照 |
-| `pre-push` | 检查待推送引用的本地 tip，删除引用除外 |
+| Check working files and run tool tests | `python3 scripts/check_quality.py` |
+| Check the complete staged snapshot and its tests | `python3 scripts/check_quality.py --staged` |
+| Check a specific committed snapshot | `python3 scripts/check_quality.py --revision HEAD` |
+| Check file lengths only | `python3 scripts/check_file_lines.py` |
+| Enable repository-local hooks | `python3 scripts/install_hooks.py` |
+| Inspect the active hook configuration | `git config --show-origin --get core.hooksPath` |
 
-行数默认覆盖所有非文档文本文件，包括配置。`.md`、`.rst` 文档与二进制不计行数。已跟踪文件不能通过新加 `.gitignore` 逃避检查。
+`pre-commit` checks the full staged snapshot. `pre-push` checks each outgoing reference's
+local tip, excluding deletions; it does not replay every historical commit.
 
-## 验证本 Skill
+## Features
 
-从本仓库根目录执行：
+- **1000-line limit:** handwritten program files may contain at most 1000 physical lines,
+  including blank lines, comments, and embedded templates. Do not bypass the rule through
+  minification, extension changes, or meaningless numbered fragments.
+- **Broad file coverage:** the checker covers non-document text files, including
+  configuration, tracked files, and untracked files not ignored by Git. `.md`, `.rst`, and
+  binary files are not counted. Tracked files cannot hide behind a new ignore rule.
+- **Snapshot-aware testing:** staged and committed tests run in temporary exports, so an
+  unstaged fix cannot hide a staged failure.
+- **Failure-case verification:** tests deliberately inject oversized files, failing tests,
+  missing gate files, and empty test suites.
+- **Non-overwriting setup:** initializers and hook installers stop at conflicting setups
+  instead of replacing them.
+- **Responsibility-based design:** the skill guides module boundaries and relevant business
+  checks without pretending those checks have already been automated.
+
+## How the gates work
+
+```text
+Short global instructions   when to load the skill and which defaults apply
+SKILL.md                    inspect, implement, verify, and report honestly
+Repository-local scripts    executable line checks and tool regression tests
+Local Git hooks             check the actual staged or outgoing snapshot
+Remote CI and protection    separate setup required for enforced merging
+```
+
+Instructions guide behavior; checks supply evidence. Neither a skill nor a local hook is
+an unbypassable control. See [the gate reference](./references/project-gates.md) for details.
+
+## Install and upgrade
+
+Discovery does not mean the full skill is always loaded. Append short instructions to
+`~/.pi/agent/AGENTS.md`; do not replace existing configuration:
+
+```markdown
+## Engineering constraints
+- Before project setup, code changes/refactoring, gate setup, or delivery, read and follow
+  ~/.agents/skills/engineering-guardrails/SKILL.md.
+- Keep program files within 1000 physical lines, including blank lines and comments.
+  Do not compress code to bypass the limit.
+- Establish repository-local checks for new projects; inspect legacy projects first.
+- Report actual verification results. Local hooks are not remote enforcement.
+```
+
+To update a clean skill checkout:
+
+```bash
+git -C ~/.agents/skills/engineering-guardrails status --short
+git -C ~/.agents/skills/engineering-guardrails pull --ff-only
+```
+
+Save or resolve local changes before pulling. Already-copied project tools do not update
+automatically: review and integrate differences, then rerun tests. The initializer refuses
+to overwrite different content.
+
+## Cross-agent and multi-machine use
+
+The skill's instructions and project tools are portable, but discovery paths and global
+instruction files depend on the agent. Pi's behavior is not a compatibility guarantee
+for every harness.
+
+On another machine, clone the skill into the supported skill directory and configure the
+global instruction entry point. Projects keep their own copied checks under version control.
+After cloning a project, review and explicitly enable its hooks; Git does not enable them
+automatically.
+
+## Privacy and Git policy
+
+This repository contains no machine-wide configuration, business data, or credentials.
+The tools do not automatically modify remote settings or authorize commits, pushes, or deployments.
+
+Keep project-local environments, credentials, dependencies, and generated artifacts out of
+Git. Review gate code, tests, and any exemptions as carefully as application changes;
+do not silently relax thresholds to make a check pass.
+
+## Limitations
+
+- Skills and global instructions guide agents; local hooks can be bypassed.
+- Remote enforcement requires separately configured CI, required checks, and branch protection.
+- The kit implements line checks and tests of the gate tools themselves. It does **not**
+  automatically implement module-dependency, permission, workflow, or concurrency checks.
+- Add application tests and language-specific checks to the project entry point. Tool tests
+  are not application acceptance.
+- Inspect legacy projects before changing them; do not automatically restructure them.
+- The tools target Git repositories and require Python 3.12+ and Git.
+
+## Development
+
+Run tests and static checks from this skill repository's root:
 
 ```bash
 python3 assets/project-kit/scripts/check_file_lines.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 -m unittest discover -s assets/project-kit/tests -p 'test_*.py' -v
+git diff --check
 ```
 
-测试在临时 Git 仓库验证1000／1001行边界、暂存与工作区差异、真实 hook 拦截、快照隔离、零测试失败、初始化冲突及不覆盖已有 hook。
+Tests use isolated temporary Git repositories; they do not create fixture commits in
+application branches. The Python tools use only the standard library.
 
-## 明确限制
+## Project structure
 
-- Skill 和全局约定是代理指导，不是不可绕过的强制执行器。
-- 本地 hook 可绕过，新克隆也不会自动启用；远端强制约束需要另行配置 CI、必要检查及分支保护。
-- 工具包当前实现的是行数门禁和工具自身测试，**没有自动实现模块依赖、权限、业务流程或并发正确性检查**。
-- 新业务和其他语言的测试必须接入项目检查入口；工具测试不是应用验收。
-- 不含任何本机全局配置、业务资料、账号凭据；不自动修改远端设置。
+```text
+engineering-guardrails/
+├── SKILL.md
+├── references/project-gates.md
+├── scripts/init_project.py
+├── assets/
+│   ├── demo.svg
+│   └── project-kit/
+│       ├── scripts/
+│       ├── .githooks/
+│       ├── tests/
+│       └── docs/engineering-gates.md
+├── tests/test_init_project.py
+├── README.md
+├── README.zh-CN.md
+└── LICENSE
+```
 
-完整流程见 [SKILL.md](SKILL.md)，门禁机制见 [references/project-gates.md](references/project-gates.md)。
+## License
+
+[MIT License](LICENSE)

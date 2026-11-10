@@ -1,0 +1,188 @@
+# engineering-guardrails
+
+[![许可证：MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![运行环境：Python 3.12+](https://img.shields.io/badge/runtime-python%203.12%2B-blue.svg)](https://www.python.org/)
+[![单文件限制：1000 行](https://img.shields.io/badge/file%20limit-1000%20lines-00869a.svg)](#主要功能)
+
+[English](./README.md) | **中文**
+
+面向编码 Agent 的通用工程约束工具。通过全局简规则、通用 Skill 和项目自动门禁，
+控制文件规模、维护模块边界，并验证实际暂存或提交的代码，而不只是工作区测试通过。
+
+Skill 使用 Markdown 和可移植的 Python 工具，不强制框架、微服务，
+也不要求每个项目采用同一种架构。
+
+## 演示
+
+![行数检查：1000 行通过，1001 行失败](./assets/demo.svg)
+
+图中复现了独立临时 Git 仓库中的实际检查输出。基本流程很简单：加载规则，
+建立项目检查，再用故意违规的反例确认门禁确实会失败。
+
+## 快速开始
+
+前置要求：Python 3.12+、Git；可选 Git hook 需要 POSIX shell。
+
+在 Skill 目标目录尚不存在时：
+
+```bash
+git clone https://github.com/hotalexnet/engineering-guardrails.git \
+  ~/.agents/skills/engineering-guardrails
+```
+
+为已有的独立 Git 仓库建立门禁：
+
+```bash
+python3 ~/.agents/skills/engineering-guardrails/scripts/init_project.py \
+  --repo /absolute/path/to/project
+
+cd /absolute/path/to/project
+python3 scripts/check_quality.py
+
+# 审核已有 hook 后，再启用本仓库的自动门禁。
+python3 scripts/install_hooks.py
+```
+
+Pi 支持发现 `~/.agents/skills/` 下的 Skill。当前会话执行 `/reload`，
+也可通过 `/skill:engineering-guardrails` 显式加载。
+
+## 安装了什么
+
+克隆后，`~/.agents/skills/engineering-guardrails/` 中有一个完整 Skill。
+项目初始化器会向目标仓库复制一套自包含门禁：
+
+- `scripts/`：行数检查、统一质量入口和 hook 安装器。
+- `.githooks/`：暂存快照及待推送 tip 检查。
+- `tests/`：门禁工具回归测试。
+- `docs/engineering-gates.md`：项目规则和强制能力限制说明。
+
+初始化器复制前预检全部目标，遇到冲突内容即停止，不修改 `AGENTS.md`，
+不安装依赖、不暂存、不提交、不推送。
+复制后的工具不依赖这个 Skill 仓库或某个使用者的主目录运行。
+
+## 常用命令
+
+初始化后，从目标仓库根目录执行。
+
+| 需求 | 命令 |
+| --- | --- |
+| 检查工作区并运行工具测试 | `python3 scripts/check_quality.py` |
+| 检查完整暂存快照及其测试 | `python3 scripts/check_quality.py --staged` |
+| 检查指定提交快照 | `python3 scripts/check_quality.py --revision HEAD` |
+| 只检查文件行数 | `python3 scripts/check_file_lines.py` |
+| 启用仓库本地 hook | `python3 scripts/install_hooks.py` |
+| 查看当前 hook 配置 | `git config --show-origin --get core.hooksPath` |
+
+`pre-commit` 检查完整暂存快照。`pre-push` 检查待推送引用的本地 tip，
+删除引用除外，不逐个回放全部历史提交。
+
+## 主要功能
+
+- **1000 行上限：** 手写程序文件最多1000物理行，空行、注释和内嵌模板均计入。
+  不得通过压缩代码、改变后缀或拆成无职责的编号文件绕过。
+- **覆盖不同文件：** 检查非文档文本文件，包括配置、已跟踪文件和未被 Git 忽略的新文件。
+  `.md`、`.rst` 文档及二进制不计行数；已跟踪文件不能通过新加忽略规则逃避检查。
+- **按快照验证：** 暂存和提交快照在临时导出目录运行测试，不能用未暂存修复掩盖暂存失败。
+- **验证失败路径：** 测试主动注入超限文件、失败测试、门禁文件缺失及空测试集。
+- **不覆盖已有配置：** 初始化器及 hook 安装器遇到冲突即停止，不接管已有其他门禁。
+- **按职责设计：** Skill 指导模块边界及适用的业务验证，不冒充这些检查已经全部自动实现。
+
+## 门禁如何工作
+
+```text
+全局简规则          何时加载 Skill，默认约束是什么
+SKILL.md            检查上下文、实现、验证并如实报告
+项目内检查脚本      执行行数检查及工具回归测试
+本地 Git hook       自动检查真实暂存或待推送快照
+远端 CI 和分支保护  需要另行配置，才能强制限制合并
+```
+
+指令指导行为，检查提供证据。Skill 和本地 hook 都不是不可绕过的强制执行器。
+机制详见 [门禁参考文档](./references/project-gates.md)。
+
+## 安装和升级
+
+发现 Skill 不等于始终加载全文。建议向 `~/.pi/agent/AGENTS.md` 追加简规则，
+不要覆盖已有配置：
+
+```markdown
+## 工程约束
+- 新项目、代码修改／重构、门禁建立和交付前，先读取并遵循
+  ~/.agents/skills/engineering-guardrails/SKILL.md。
+- 程序单文件最多1000物理行，包含空行与注释，不得靠压缩代码绕过。
+- 新项目建立仓库内检查；旧项目先评估，不自动批量改造。
+- 只报告实际验证结果，不将本地 hook 称为远端强制门禁。
+```
+
+更新干净的 Skill 工作区：
+
+```bash
+git -C ~/.agents/skills/engineering-guardrails status --short
+git -C ~/.agents/skills/engineering-guardrails pull --ff-only
+```
+
+拉取前先保存或处理本地修改。已复制到项目中的工具不会自动更新：
+需审查差异、针对性整合并重新测试。初始化器不会覆盖不同内容。
+
+## 跨 Agent 和多机器使用
+
+Skill 指令和项目工具可移植，但技能发现目录及全局指令入口取决于代理工具。
+Pi 的加载行为不代表已经验证所有工具兼容。
+
+在另一台机器上，把 Skill 克隆到对应工具支持的目录，并配置全局指令入口。
+项目自己的检查脚本随仓库管理。克隆项目后，应先审核再显式启用 hook；
+Git 不会自动启用它们。
+
+## 隐私和 Git 建议
+
+本仓库不包含本机全局配置、业务资料或凭据。工具不自动修改远端设置，
+也不自动取得提交、推送或部署授权。
+
+项目环境、凭据、依赖及生成产物不应进入 Git。门禁实现、测试及豁免项与业务代码一样需要评审，
+不能为了检查通过而静默放宽阈值。
+
+## 限制
+
+- Skill 和全局约定是代理指导，本地 hook 可以绕过。
+- 远端强制约束需要另行配置 CI、必要检查及分支保护。
+- 工具包实现行数门禁和工具自身测试，**没有自动实现模块依赖、权限、业务流程或并发正确性检查**。
+- 真实应用测试及其他语言检查需要接入项目入口；工具测试不等于应用验收。
+- 旧项目先评估，不自动批量改造。
+- 工具面向 Git 仓库，需要 Python 3.12+ 和 Git。
+
+## 开发和测试
+
+从本 Skill 仓库根目录运行测试和静态检查：
+
+```bash
+python3 assets/project-kit/scripts/check_file_lines.py
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m unittest discover -s assets/project-kit/tests -p 'test_*.py' -v
+git diff --check
+```
+
+测试使用独立临时 Git 仓库，不在业务分支制造测试提交。Python 工具仅使用标准库。
+
+## 项目结构
+
+```text
+engineering-guardrails/
+├── SKILL.md
+├── references/project-gates.md
+├── scripts/init_project.py
+├── assets/
+│   ├── demo.svg
+│   └── project-kit/
+│       ├── scripts/
+│       ├── .githooks/
+│       ├── tests/
+│       └── docs/engineering-gates.md
+├── tests/test_init_project.py
+├── README.md
+├── README.zh-CN.md
+└── LICENSE
+```
+
+## 许可证
+
+[MIT License](LICENSE)

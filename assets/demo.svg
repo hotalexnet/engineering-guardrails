@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="354" viewBox="0 0 920 354" role="img" aria-labelledby="title description">
+  <title id="title">Engineering Guardrails line-limit demonstration</title>
+  <desc id="description">Real checker output from a temporary Git repository: a 1000-line source.py passes with exit code 0; a 1001-line source.py fails with exit code 1.</desc>
+  <rect width="920" height="354" rx="12" fill="#101923"/>
+  <path d="M12 0h896a12 12 0 0 1 12 12v30H0V12A12 12 0 0 1 12 0" fill="#1c2a38"/>
+  <circle cx="22" cy="21" r="6" fill="#ed6a5e"/>
+  <circle cx="43" cy="21" r="6" fill="#f4bf4f"/>
+  <circle cx="64" cy="21" r="6" fill="#61c554"/>
+  <text x="460" y="26" text-anchor="middle" fill="#b3c0cf" font-family="monospace" font-size="13">engineering-guardrails · isolated Git fixture</text>
+  <g font-family="monospace" font-size="16">
+    <text x="28" y="82" fill="#8c9eaf"># source.py: 1000 physical lines</text>
+    <text x="28" y="113" fill="#dae5f0">$ python3 …/check_file_lines.py</text>
+    <text x="28" y="144" fill="#74d99f">PASS: 1 text files checked; limit 1000 physical lines.</text>
+    <text x="28" y="175" fill="#8c9eaf">exit 0</text>
+    <text x="28" y="220" fill="#8c9eaf"># source.py: 1001 physical lines</text>
+    <text x="28" y="251" fill="#dae5f0">$ python3 …/check_file_lines.py</text>
+    <text x="28" y="282" fill="#ff9292">File line limit check FAILED:</text>
+    <text x="48" y="309" fill="#ff9292">source.py: 1001 lines &gt; 1000</text>
+    <text x="28" y="337" fill="#8c9eaf">exit 1</text>
+  </g>
+</svg>

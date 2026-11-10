@@ -1,5 +1,6 @@
 ---
 name: engineering-guardrails
+license: MIT
 description: >-
   在新项目初始化、编写或修改代码、重构、架构边界检查、质量门禁和交付前使用。
   落实单文件最多1000物理行、职责边界、可验证业务约束和实际测试证据；提供可复制到仓库的行数检查、测试、Git hooks及质量入口。
